@@ -5,6 +5,8 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const { v4: uuidv4 } = require("uuid");
 
+require("dotenv").config();
+
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,6 +14,67 @@ const PORT = process.env.PORT || 3000;
 // Middleware setup
 app.use(bodyParser.json());
 
+// Custom logger middleware for logging request method, URL and timestamp
+app.use((req, res, next) => {
+  const now = new Date().toISOString();
+  console.log(`[${now}] ${req.method} ${req.originalUrl}`);
+  next();
+});
+
+// Authentication middleware
+const validAPIKey = process.env.API_KEY;
+
+if (!validAPIKey) {
+  console.error("ERROR: API_KEY is not set in .env.local");
+}
+
+app.use((req, res, next) => {
+  const apiKey = req.headers["x-api-key"];
+  if (apiKey !== validAPIKey) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+});
+
+// Validation middleware
+function validateProduct(req, res, next) {
+  const { name, description, price, category, inStock } = req.body;
+
+  if (typeof name !== "string" || name.trim() === "") {
+    return res
+      .status(400)
+      .json({ error: "Product name is required and must be a string." });
+  }
+
+  if (typeof description !== "string" || description.trim() === "") {
+    return res
+      .status(400)
+      .json({ error: "Description is required and must be a string." });
+  }
+
+  if (typeof price !== "number" || price < 0) {
+    return res
+      .status(400)
+      .json({ error: "Price is required and must be a non-negative number." });
+  }
+
+  if (typeof category !== "string" || category.trim() === "") {
+    return res
+      .status(400)
+      .json({ error: "Category is required and must be a string." });
+  }
+
+  if (typeof inStock !== "boolean") {
+    return res
+      .status(400)
+      .json({ error: "inStock is required and must be a boolean." });
+  }
+
+  next();
+}
+
+// Error handling
+// 
 // Sample in-memory products database
 let products = [
   {
@@ -64,7 +127,7 @@ app.get("/api/products/:id", (req, res) => {
   res.json(product);
 });
 // POST /api/products - Create a new product
-app.post("/api/products", (req, res) => {
+app.post("/api/products", validateProduct, (req, res) => {
   const { name, description, price, category, inStock } = req.body;
 
   const newProduct = {
@@ -79,7 +142,7 @@ app.post("/api/products", (req, res) => {
   res.status(201).json(newProduct);
 });
 // PUT /api/products/:id - Update a product
-app.put("/api/products/:id", (req, res) => {
+app.put("/api/products/:id", validateProduct, (req, res) => {
   const product = products.find((p) => p.id === req.params.id);
 
   if (!product) return res.status(404).json("Product not found");
@@ -105,11 +168,6 @@ app.delete("/api/products/:id", (req, res) => {
   const deletedProduct = products.splice(productIndex, 1)[0];
 
   res.json(deletedProduct);
-});
-
-// Example route implementation for GET /api/products
-app.get("/api/products", (req, res) => {
-  res.json(products);
 });
 
 // TODO: Implement custom middleware for:
